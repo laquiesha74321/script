@@ -8,6 +8,11 @@ local char, root, hum
 local isTeleporting = false
 local targetedPlayer
 
+local StudWidth = 5
+local StudsX = 50
+local StudsZ = 50
+local StudsY = 1
+
 local modules = {
     notification = require(ReplicatedStorage.Game.Notification),
     vehicle = require(ReplicatedStorage.Vehicle.VehicleUtils)
@@ -207,13 +212,18 @@ local Button = Tab:CreateButton({
     end,
  })
 
---  local Toggle = Tab:CreateToggle({
---     Name = "Super Rocket Launcher",
---     CurrentValue = false,
---     Flag = "Toggle1",
---     Callback = function(Value)
-        
---     end,
---  })
-
 player.CharacterAdded:Connect(onCharacterAdded)
+
+workspace.ChildAdded:Connect(function(obj) 
+	if obj.Name == "Missile" then
+		if obj:FindFirstChild("SeekingMissileExplode") then
+			for x = 1, StudsX * StudWidth, StudWidth do
+				for y = 1, StudsY * StudWidth, StudWidth do
+					for z = 1, StudsZ * StudWidth, StudWidth do
+						obj.SeekingMissileExplode:FireServer(root.Position + Vector3.new(x, y, z))
+					end
+				end
+			end
+		end
+	end
+end)
