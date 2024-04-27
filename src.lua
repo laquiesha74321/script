@@ -1,60 +1,59 @@
-local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+local OrionLib = loadstring(game:HttpGet(('https://raw.githubusercontent.com/shlexware/Orion/main/source')))()
+local Window = OrionLib:MakeWindow({Name = "Ok lol", HidePremium = false, SaveConfig = true, ConfigFolder = "Lol", IntroEnabled = false})
 
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
-local player = Players.LocalPlayer
-local char, root, hum
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-local isTeleporting = false
-local targetedPlayer
+local Player = Players.LocalPlayer
+local Char, Root = nil, nil
+local SelectedLocation, TargetedPlayer, PlaySound = nil, nil, nil
+local VehicleUtils = require(ReplicatedStorage.Vehicle.VehicleUtils)
+local IsTeleporting = false
 
-local StudWidth = 5
-local StudsX = 50
-local StudsZ = 50
-local StudsY = 1
-
-local modules = {
-    notification = require(ReplicatedStorage.Game.Notification),
-    vehicle = require(ReplicatedStorage.Vehicle.VehicleUtils)
+local Sounds = {}
+local TPLocations = {
+    ["Ad Portal"] = CFrame.new(90, 20, 1459),
+    ["Sewers"] = CFrame.new(-1289, -26, -1708),
 }
 
-local getvehiclepacket = modules.vehicle.GetLocalVehiclePacket
-local getvehiclemodel = modules.vehicle.GetLocalVehicleModel
-
-local function onCharacterAdded(character)
-    char, root, hum = character, character:WaitForChild("HumanoidRootPart"), character:WaitForChild("Humanoid")
-
-    local function onDied()
-        char, root, hum = nil, nil, nil
-    end
-
-    hum.Died:Connect(onDied)
-end
-
-local function getPlayer(partial)
-    if partial ~= "" then
-        local lower = partial:lower()
-        for _, plr in next, Players:GetPlayers() do
-            if plr.Name:sub(1,#partial):lower() == lower or plr.DisplayName:sub(1,#partial):lower() == lower then
-                return plr
+coroutine.wrap(function() 
+    for _, v in next, getgc() do
+        if type(v) == "function" and getfenv(v).script == Player.PlayerScripts.LocalScript then
+            local con = getconstants(v)
+            if table.find(con, "Play") and table.find(con, "Source") and table.find(con, "FireServer") then
+                PlaySound = v
             end
         end
-        return nil
-    else
-        return nil
     end
+end)()
+
+local function CharacterAdded(character)
+    Char, Root = character, character:WaitForChild("HumanoidRootPart")
 end
 
-local function notify(text)
-    return modules.notification.new({
+CharacterAdded(Player.Character or Player.CharacterAdded:Wait())
+Player.CharacterAdded:Connect(CharacterAdded)
+
+local function GetPlayer(text)
+    if text == "" then return nil end
+    for _, v in next, Players:GetPlayers() do
+        if v.Name:lower():match(text) or v.DisplayName:lower():match(text) then
+            return v
+        end
+    end
+    return nil
+end
+
+local function Notify(text)
+    return require(ReplicatedStorage.Game.Notification).new({
         Text = text,
         Duration = 3
     })
 end
 
-local function getPlayerVehicle(target)
-    for i, v in next, workspace.Vehicles:GetChildren() do
-        for i2, v2 in next, v:GetChildren() do
+local function GetPlayerVehicle(target)
+    for _, v in next, workspace.Vehicles:GetChildren() do
+        for _, v2 in next, v:GetChildren() do
             if v2.Name == "Seat" or v2.Name == "Passenger" then
                 if v2:FindFirstChild("PlayerName") then
                     if v2.PlayerName.Value == target.Name then
@@ -64,166 +63,196 @@ local function getPlayerVehicle(target)
             end
         end
     end
+    return false
 end
 
-local function teleportPlayerToAd(target)
-    local localVehicle = getvehiclepacket()
-    if not localVehicle or (localVehicle and tostring(localVehicle.Type) ~= "Heli") then
-        return false
-    end
-
-    local targetVehicle = getPlayerVehicle(target)
-    local heli = getvehiclemodel()
-    if not targetVehicle then
-        return false
-    end
-
-    if heli.PrimaryPart.Position.y < 100 then
-		return notify("Fly higher to descend the rope.")
-	end
-
-    if not heli.Preset:FindFirstChild("RopePull") then
-        modules.vehicle.Classes.Heli.attemptDropRope()
-
-        repeat task.wait(0.1) until heli.Preset:FindFirstChild("RopePull")
-    end
-
-    local ropepull = heli.Preset.RopePull
-    local rope = heli.Winch.RopeConstraint
-    ropepull.CanCollide = false
-    rope.Length = 15000
-
-    repeat
-        ropepull.CFrame = targetVehicle.PrimaryPart.CFrame
-        ropepull.ReqLink:FireServer(targetVehicle, Vector3.zero)
-        
-        task.wait()
-    until ropepull.AttachedTo.Value
-
-    local clock = tick()
-
-    repeat
-        targetVehicle:PivotTo(CFrame.new(90, 20, 1459))
-
-        task.wait()
-    until not target.Character or not target.Character:FindFirstChild("InVehicle") or tick() - clock > 5
-
-    modules.vehicle.Classes.Heli.attemptDropRope()
-    notify("Success!")
-end
-
-local function giveHyperShift()
-    ReplicatedStorage.GarageEquipItem:FireServer("BodyColor", "HyperShift")
-    ReplicatedStorage.GarageEquipItem:FireServer("SecondBodyColor", "HyperShift")
-    ReplicatedStorage.GarageEquipItem:FireServer("Texture", "Checker")
-    ReplicatedStorage.GarageEquipItem:FireServer("Spoiler", "Thrusters")
-    ReplicatedStorage.GarageEquipItem:FireServer("Rim", "Spinner")
-end
-
-if player.Character and player.Character:FindFirstChild("Humanoid") then
-    task.spawn(onCharacterAdded, player.Character)
-end
-
-local Window = Rayfield:CreateWindow({
-    Name = "Untitled",
-    LoadingTitle = "Lol",
-    LoadingSubtitle = "by Sirius",
-    ConfigurationSaving = {
-        Enabled = true,
-        FolderName = nil, -- Create a custom folder for your hub/game
-        FileName = "Big Hub"
-    },
-    Discord = {
-        Enabled = false,
-        Invite = "noinvitelink", -- The Discord invite code, do not include discord.gg/. E.g. discord.gg/ABCD would be ABCD
-        RememberJoins = true -- Set this to false to make them join the discord every time they load it up
-    },
-    KeySystem = false, -- Set this to true to use our key system
-    KeySettings = {
-        Title = "Untitled",
-        Subtitle = "Key System",
-        Note = "No method of obtaining the key is provided",
-        FileName = "Key", -- It is recommended to use something unique as other scripts using Rayfield may overwrite your key file
-        SaveKey = true, -- The user's key will be saved, but if you change the key, they will be unable to use your script
-        GrabKeyFromSite = false, -- If this is true, set Key below to the RAW site you would like Rayfield to get the key from
-        Key = {"Hello"} -- List of keys that will be accepted by the system, can be RAW file links (pastebin, github etc) or simple strings ("hello","key22")
-    }
-})
-
-local Tab = Window:CreateTab("Tab Example", 4483362458)
-
-local ADSection = Tab:CreateSection("Ad Portal TP")
-
-local Label = Tab:CreateLabel("Selected Target: NOT SET")
-
-local Input = Tab:CreateInput({
-    Name = "Target",
-    PlaceholderText = "Input",
-    RemoveTextAfterFocusLost = true,
-    Callback = function(Text)
-        targetedPlayer = getPlayer(Text)
-        if targetedPlayer then
-            Label:Set(("Target: %s"):format(targetedPlayer.Name))
-        else
-            Label:Set("Target: NOT SET")
-        end
-    end,
- })
-
-
- local Button2 = Tab:CreateButton({
-    Name = "Teleport",
-    Callback = function()
-        local target = targetedPlayer
-        if target then
-            local character = target.Character
-            if character then
-                local humroot = character:FindFirstChild("HumanoidRootPart")
-                if humroot then
-                    if character:FindFirstChild("InVehicle") then
-                        if not isTeleporting then
-                            isTeleporting = true
-                            teleportPlayerToAd(target)
-                            isTeleporting = false
-                        end
-                    else
-                        notify("Target is not in a vehicle.")
-                    end
-                end
-            end
-        end
-    end,
- })
-
- local MiscSection = Tab:CreateSection("Misc")
-
-
-local Button = Tab:CreateButton({
-    Name = "Spawn Bank Truck",
-    Callback = function()
-        ReplicatedStorage.GarageSpawnVehicle:FireServer("Chassis", "BankTruck")
-    end,
- })
-
-local Button = Tab:CreateButton({
-    Name = "Give Hypershift",
-    Callback = function()
-        giveHyperShift()
-    end,
- })
-
-player.CharacterAdded:Connect(onCharacterAdded)
-
-workspace.ChildAdded:Connect(function(obj) 
-	if obj.Name == "Missile" then
-		if obj:FindFirstChild("SeekingMissileExplode") then
-			for x = 1, StudsX * StudWidth, StudWidth do
-				for y = 1, StudsY * StudWidth, StudWidth do
-					for z = 1, StudsZ * StudWidth, StudWidth do
-						obj.SeekingMissileExplode:FireServer(root.Position + Vector3.new(x, y, z))
+local function RocketLauncher(obj)
+    if obj.Name == "Missile" then
+        if obj:FindFirstChild("SeekingMissileExplode") then
+            for x = 1, 50 * 5, 5 do
+				for y = 1, 1 * 5, 5 do
+					for z = 1, 50 * 5, 5 do
+						obj.SeekingMissileExplode:FireServer(Root.Position + Vector3.new(x, y, z))
 					end
 				end
 			end
-		end
-	end
-end)
+        end
+    end
+end
+workspace.ChildAdded:Connect(RocketLauncher)
+
+local function TeleportPlayer(target)
+    local vehicle = VehicleUtils.GetLocalVehiclePacket()
+    if not vehicle or (vehicle and vehicle.Type ~= "Heli") then
+        Notify("You're not in a heli")
+        return false
+    end
+    local character = target.Character
+    if not character or (character and not character:FindFirstChild("HumanoidRootPart")) then
+        Notify("Player is not loaded in")
+        return false
+    end
+    local inVehicle = character:FindFirstChild("InVehicle")
+    if not inVehicle then
+        Notify("Player is not in a vehicle")
+        return false
+    end
+    local targetVehicle = GetPlayerVehicle(target)
+    if not targetVehicle then
+        Notify("Couldn't find vehicle..")
+        return false
+    end
+    local currentHeli = vehicle.Model
+    if currentHeli.PrimaryPart.Position.y < 250 then
+        currentHeli.PrimaryPart.CFrame = currentHeli.PrimaryPart.CFrame * CFrame.new(0, 250, 0)
+        task.wait(0.5)
+    end
+
+    if not currentHeli.Preset:FindFirstChild("RopePull") then
+        VehicleUtils.Classes.Heli.attemptDropRope()
+        repeat task.wait(0.1) until currentHeli.Preset:FindFirstChild("RopePull")
+    end
+
+    local RopePull = currentHeli.Preset.RopePull
+    local Rope = currentHeli.Winch.RopeConstraint
+    RopePull.CanCollide = false
+    Rope.Length = 10000
+
+    repeat
+        RopePull.CFrame = targetVehicle.PrimaryPart.CFrame
+        RopePull.ReqLink:FireServer(targetVehicle, Vector3.zero)
+
+        task.wait()
+    until RopePull.AttachedTo.Value
+
+    repeat
+        targetVehicle:PivotTo(SelectedLocation)
+
+        task.wait()
+    until not character or not character:FindFirstChild("InVehicle")
+
+    VehicleUtils.Classes.Heli.attemptDropRope()
+    Notify("Success!")
+end
+
+for i, v in next, require(ReplicatedStorage.Resource.Settings).Sounds do
+    table.insert(Sounds, i)
+end
+
+local HeliTab = Window:MakeTab({
+	Name = "Heli TP",
+	Icon = "rbxassetid://4483345998",
+	PremiumOnly = false
+})
+
+
+local TPSection = HeliTab:AddSection({
+	Name = "TP Player"
+})
+
+local Label = TPSection:AddLabel("Selected Player: nil")
+
+TPSection:AddTextbox({
+	Name = "Target",
+	Default = nil,
+	TextDisappear = true,
+	Callback = function(Value)
+		TargetedPlayer = GetPlayer(Value)
+        if TargetedPlayer then
+            Label:Set(("Selected Player: %s"):format(TargetedPlayer.Name))
+        else
+            Label:Set("Selected Player: nil")
+        end
+    end
+})
+
+TPSection:AddDropdown({
+	Name = "Location",
+	Default = nil,
+	Options = {"Ad Portal", "Sewers"},
+	Callback = function(Value)
+		SelectedLocation = TPLocations[Value]
+	end     
+})
+
+TPSection:AddButton({
+	Name = "Teleport!",
+	Callback = function()
+        if SelectedLocation then
+            if TargetedPlayer then
+                if not IsTeleporting then
+                    IsTeleporting = true
+                    TeleportPlayer(TargetedPlayer)
+                    IsTeleporting = false
+                else
+                    Notify("Teleport in process..")
+                end
+            end
+        end
+	end     
+})
+
+local SoundsTab = Window:MakeTab({
+	Name = "Sounds",
+	Icon = "rbxassetid://4483345998",
+	PremiumOnly = false
+})
+
+local PitchValue
+local SoundsSection = SoundsTab:AddSection({
+	Name = "Sounds"
+})
+
+SoundsSection:AddDropdown({
+	Name = "Play Sound",
+	Default = nil,
+	Options = Sounds,
+	Callback = function(Value)
+		PlaySound(Value, {
+			Pitch = PitchValue,
+			Source = Char,
+			Volume = math.huge,
+			Multi = true,
+			MaxTime = 25
+		}, false)
+	end    
+})
+
+SoundsSection:AddTextbox({
+	Name = "Pitch",
+	Default = "1",
+	TextDisappear = true,
+	Callback = function(Value)
+		PitchValue = Value
+	end	  
+})
+
+local VehicleTab = Window:MakeTab({
+	Name = "Vehicle",
+	Icon = "rbxassetid://4483345998",
+	PremiumOnly = false
+})
+
+local VehiclesSection = VehicleTab:AddSection({
+	Name = "Vehicles"
+})
+
+VehiclesSection:AddButton({
+	Name = "Spawn Bank Truck",
+	Callback = function()
+        ReplicatedStorage.GarageSpawnVehicle:FireServer("Chassis", "BankTruck")
+  	end    
+})
+
+VehiclesSection:AddButton({
+	Name = "HyperShift Car",
+	Callback = function()
+        ReplicatedStorage.GarageEquipItem:FireServer("BodyColor", "HyperShift")
+        ReplicatedStorage.GarageEquipItem:FireServer("SecondBodyColor", "HyperShift")
+        ReplicatedStorage.GarageEquipItem:FireServer("Texture", "Checker")
+        ReplicatedStorage.GarageEquipItem:FireServer("Spoiler", "Thrusters")
+        ReplicatedStorage.GarageEquipItem:FireServer("Rim", "Spinner")
+  	end    
+})
+
+OrionLib:Init()
