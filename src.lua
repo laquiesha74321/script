@@ -143,9 +143,11 @@ MainSection:AddTextbox({
 	Default = nil,
 	TextDisappear = true,
 	Callback = function(Value)
-		local target = GetPlayer(Value)
-        if target then
-            task.spawn(PlayerTP, target)
+        if GetVehiclePacket() then
+            local target = GetPlayer(Value)
+            if target then
+                task.spawn(PlayerTP, target)
+            end
         end
     end
 })
