@@ -3,11 +3,10 @@ local Window = OrionLib:MakeWindow({Name = "Ok lol", HidePremium = false, SaveCo
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-
 local Player = Players.LocalPlayer
-local Char, Root = nil, nil
+
 local SelectedLocation, TargetedPlayer, PlaySound = nil, nil, nil
-local VehicleUtils = require(ReplicatedStorage.Vehicle.VehicleUtils)
+local GetVehiclePacket = require(ReplicatedStorage.Vehicle.VehicleUtils).GetLocalVehiclePacket
 local IsTeleporting = false
 
 local Sounds = {}
@@ -16,7 +15,7 @@ local TPLocations = {
     ["Sewers"] = CFrame.new(-1289, -26, -1708),
 }
 
-coroutine.wrap(function() 
+task.spawn(function()
     for _, v in next, getgc() do
         if type(v) == "function" and getfenv(v).script == Player.PlayerScripts.LocalScript then
             local con = getconstants(v)
@@ -25,14 +24,7 @@ coroutine.wrap(function()
             end
         end
     end
-end)()
-
-local function CharacterAdded(character)
-    Char, Root = character, character:WaitForChild("HumanoidRootPart")
-end
-
-CharacterAdded(Player.Character or Player.CharacterAdded:Wait())
-Player.CharacterAdded:Connect(CharacterAdded)
+end)
 
 local function GetPlayer(text)
     if text == "" then return nil end
@@ -44,11 +36,29 @@ local function GetPlayer(text)
     return nil
 end
 
-local function Notify(text)
-    return require(ReplicatedStorage.Game.Notification).new({
-        Text = text,
-        Duration = 3
-    })
+local function XZ(vector3)
+    return Vector3.new(vector3.X, 0, vector3.Z)
+end
+
+local function PlayerTP(target)
+    local character = target.Character
+    if not character then return end
+    local humroot = character:FindFirstChild("HumanoidRootPart")
+    if not humroot then return end
+
+    local vehicleRoot = GetVehiclePacket().Model.PrimaryPart
+    local BV = Instance.new("BodyVelocity", vehicleRoot)
+    BV.MaxForce = Vector3.new(9e9, 9e9, 9e9)
+    BV.Velocity = Vector3.new()
+    repeat  
+        local Dir = (XZ(humroot.Position) - XZ(vehicleRoot.Position))
+        vehicleRoot.CFrame = CFrame.new(vehicleRoot.Position.X, 850, vehicleRoot.Position.Z) + (Dir.Unit * 10)
+
+        task.wait()
+    until Dir.Magnitude < 20
+
+    BV:Destroy()
+    vehicleRoot.CFrame = CFrame.new(humroot.Position)
 end
 
 local function GetPlayerVehicle(target)
@@ -63,58 +73,34 @@ local function GetPlayerVehicle(target)
             end
         end
     end
-    return false
 end
-
-local function RocketLauncher(obj)
-    if obj.Name == "Missile" then
-        if obj:FindFirstChild("SeekingMissileExplode") then
-            for x = 1, 50 * 5, 5 do
-				for y = 1, 1 * 5, 5 do
-					for z = 1, 50 * 5, 5 do
-						obj.SeekingMissileExplode:FireServer(Root.Position + Vector3.new(x, y, z))
-					end
-				end
-			end
-        end
-    end
-end
-workspace.ChildAdded:Connect(RocketLauncher)
 
 local function TeleportPlayer(target)
-    local vehicle = VehicleUtils.GetLocalVehiclePacket()
-    if not vehicle or (vehicle and vehicle.Type ~= "Heli") then
-        Notify("You're not in a heli")
-        return false
+    local vehicle = GetVehiclePacket()
+    if not vehicle or vehicle and vehicle.Type ~= "Heli" then
+        return
     end
     local character = target.Character
-    if not character or (character and not character:FindFirstChild("HumanoidRootPart")) then
-        Notify("Player is not loaded in")
-        return false
-    end
-    local inVehicle = character:FindFirstChild("InVehicle")
-    if not inVehicle then
-        Notify("Player is not in a vehicle")
-        return false
+    if not character or character and not character:FindFirstChild("HumanoidRootPart") or not character:FindFirstChild("InVehicle") then
+        return
     end
     local targetVehicle = GetPlayerVehicle(target)
     if not targetVehicle then
-        Notify("Couldn't find vehicle..")
-        return false
+        return
     end
-    local currentHeli = vehicle.Model
-    if currentHeli.PrimaryPart.Position.y < 250 then
-        currentHeli.PrimaryPart.CFrame = currentHeli.PrimaryPart.CFrame * CFrame.new(0, 250, 0)
+
+    if vehicle.Model.PrimaryPart.Position.y < 250 then
+        vehicle.Model.PrimaryPart.CFrame = vehicle.Model.PrimaryPart.CFrame * CFrame.new(0, 250, 0)
         task.wait(0.5)
     end
 
-    if not currentHeli.Preset:FindFirstChild("RopePull") then
-        VehicleUtils.Classes.Heli.attemptDropRope()
-        repeat task.wait(0.1) until currentHeli.Preset:FindFirstChild("RopePull")
+    if not vehicle.Model.Preset:FindFirstChild("RopePull") then
+        require(ReplicatedStorage.Vehicle.VehicleUtils).Classes.Heli.attemptDropRope()
+        repeat task.wait(0.1) until vehicle.Model.Preset:FindFirstChild("RopePull")
     end
 
-    local RopePull = currentHeli.Preset.RopePull
-    local Rope = currentHeli.Winch.RopeConstraint
+    local RopePull = vehicle.Model.Preset.RopePull
+    local Rope = vehicle.Model.Winch.RopeConstraint
     RopePull.CanCollide = false
     Rope.Length = 10000
 
@@ -123,21 +109,46 @@ local function TeleportPlayer(target)
         RopePull.ReqLink:FireServer(targetVehicle, Vector3.zero)
 
         task.wait()
-    until RopePull.AttachedTo.Value
+    until RopePull.AttachedTo.Value or not RopePull:FindFirstChild("AttachedTo")
+
+    local clock = os.time()
 
     repeat
         targetVehicle:PivotTo(SelectedLocation)
 
         task.wait()
-    until not character or not character:FindFirstChild("InVehicle")
+    until not character or not character:FindFirstChild("InVehicle") or os.time() - clock > 5
 
-    VehicleUtils.Classes.Heli.attemptDropRope()
-    Notify("Success!")
+    require(ReplicatedStorage.Vehicle.VehicleUtils).Classes.Heli.attemptDropRope()
+    require(ReplicatedStorage.Game.Notification).new({Text = "Success!"})
 end
 
 for i, v in next, require(ReplicatedStorage.Resource.Settings).Sounds do
     table.insert(Sounds, i)
 end
+
+local MainTab = Window:MakeTab({
+	Name = "Teleport",
+	Icon = "rbxassetid://4483345998",
+	PremiumOnly = false
+})
+
+
+local MainSection = MainTab:AddSection({
+	Name = "Main"
+})
+
+MainSection:AddTextbox({
+	Name = "TP To Player",
+	Default = nil,
+	TextDisappear = true,
+	Callback = function(Value)
+		local target = GetPlayer(Value)
+        if target then
+            task.spawn(PlayerTP, target)
+        end
+    end
+})
 
 local HeliTab = Window:MakeTab({
 	Name = "Heli TP",
@@ -176,7 +187,7 @@ TPSection:AddDropdown({
 })
 
 TPSection:AddButton({
-	Name = "Teleport!",
+	Name = "Teleport",
 	Callback = function()
         if SelectedLocation then
             if TargetedPlayer then
@@ -184,8 +195,6 @@ TPSection:AddButton({
                     IsTeleporting = true
                     TeleportPlayer(TargetedPlayer)
                     IsTeleporting = false
-                else
-                    Notify("Teleport in process..")
                 end
             end
         end
@@ -254,5 +263,19 @@ VehiclesSection:AddButton({
         ReplicatedStorage.GarageEquipItem:FireServer("Rim", "Spinner")
   	end    
 })
+
+workspace.ChildAdded:Connect(function(obj)
+    if obj.Name == "Missile" then
+        if obj:FindFirstChild("SeekingMissileExplode") then
+            for x = 1, 50 * 5, 5 do
+				for y = 1, 1 * 5, 5 do
+					for z = 1, 50 * 5, 5 do
+						obj.SeekingMissileExplode:FireServer(Root.Position + Vector3.new(x, y, z))
+					end
+				end
+			end
+        end
+    end
+end)
 
 OrionLib:Init()
