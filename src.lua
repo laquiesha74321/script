@@ -102,7 +102,7 @@ local function TeleportPlayer(target)
     local RopePull = vehicle.Model.Preset.RopePull
     local Rope = vehicle.Model.Winch.RopeConstraint
     RopePull.CanCollide = false
-    Rope.Length = 10000
+    Rope.WinchEnabled = true
 
     repeat
         RopePull.CFrame = targetVehicle.PrimaryPart.CFrame
@@ -221,7 +221,7 @@ SoundsSection:AddDropdown({
 	Callback = function(Value)
 		PlaySound(Value, {
 			Pitch = PitchValue,
-			Source = Char,
+			Source = Player.Character,
 			Volume = math.huge,
 			Multi = true,
 			MaxTime = 25
